@@ -134,6 +134,8 @@ type SocketConfig = {
     customUploadHosts: MediaConnInfo['hosts']
     /** time to wait between sending new retry requests */
     retryRequestDelayMs: number
+    /** max msg retry count */
+    maxMsgRetryCount: number
     /** time to wait for the generation of the next QR in ms */
     qrTimeout?: number;
     /** provide an auth state object to maintain the auth state */
@@ -556,6 +558,17 @@ await sock.sendMessage(jid, { delete: response.key })
 
 **Note:** deleting for oneself is supported via `chatModify` (next section)
 
+## Updating Messages
+
+``` ts
+const jid = '1234@s.whatsapp.net'
+
+await sock.sendMessage(jid, {
+      text: 'updated text goes here',
+      edit: response.key,
+    });
+```
+
 ## Modifying Chats
 
 WA uses an encrypted form of communication to send chat/app updates. This has been implemented mostly and you can send the following updates:
@@ -605,6 +618,15 @@ WA uses an encrypted form of communication to send chat/app updates. This has be
     pin: true // or `false` to unpin
   },
   '123456@s.whatsapp.net')
+  ```
+  
+- Star/unstar a message
+  ``` ts
+  await sock.chatModify({
+  star: {
+  	messages: [{ id: 'messageID', fromMe: true // or `false` }],
+      	star: true // - true: Star Message; false: Unstar Message
+  }},'123456@s.whatsapp.net');
   ```
 
 **Note:** if you mess up one of your updates, WA can log you out of all your devices and you'll have to log in again.
@@ -822,7 +844,15 @@ Of course, replace ``` xyz ``` with an actual ID.
     ```
 ## Broadcast Lists & Stories
 
-**Note:** messages currently cannot be sent to broadcast lists from the MD version.
+Messages can be sent to broadcasts & stories. 
+you need to add the following message options in sendMessage, like this:
+```ts
+sock.sendMessage(jid, {image: {url: url}, caption: caption}, {backgroundColor : backgroundColor, font : font, statusJidList: statusJidList, broadcast : true})
+```
+- the message body can be a extendedTextMessage or imageMessage or videoMessage or voiceMessage
+- You can add backgroundColor and other options in the message options
+- broadcast: true enables broadcast mode
+- statusJidList: a list of people that you can get which you need to provide, which are the people who will get this status message.
 
 - You can send messages to broadcast lists the same way you send messages to groups & individual chats.
 - Right now, WA Web does not support creating broadcast lists, but you can still delete them.
