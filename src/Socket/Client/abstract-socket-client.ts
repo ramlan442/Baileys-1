@@ -8,7 +8,7 @@ export abstract class AbstractSocketClient extends EventEmitter {
 	abstract get isClosing(): boolean
 	abstract get isConnecting(): boolean
 
-	constructor(public url: URL, public config: SocketConfig) {
+	constructor(public url?: URL, public config?: SocketConfig) {
 		super()
 		this.setMaxListeners(0)
 	}

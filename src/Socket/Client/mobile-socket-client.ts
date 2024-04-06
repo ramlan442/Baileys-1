@@ -1,4 +1,5 @@
 import { connect, Socket } from 'net'
+import { MOBILE_ENDPOINT, MOBILE_PORT } from '../..'
 import { AbstractSocketClient } from './abstract-socket-client'
 
 export class MobileSocketClient extends AbstractSocketClient {
@@ -22,15 +23,7 @@ export class MobileSocketClient extends AbstractSocketClient {
 			return
 		}
 
-		if(this.config.agent) {
-
-			throw new Error('There are not support for proxy agent for mobile connection')
-		} else {
-			this.socket = connect({
-				host: this.url.hostname,
-				port: Number(this.url.port) || 443
-			})
-		}
+		this.socket = connect(MOBILE_PORT, MOBILE_ENDPOINT)
 
 		this.socket.setMaxListeners(0)
 

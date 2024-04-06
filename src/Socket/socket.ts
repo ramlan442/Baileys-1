@@ -1,6 +1,5 @@
 import { Boom } from '@hapi/boom'
 import { randomBytes } from 'crypto'
-import { URL } from 'url'
 import { promisify } from 'util'
 import { proto } from '../../WAProto'
 import {
@@ -8,10 +7,7 @@ import {
 	DEF_TAG_PREFIX,
 	INITIAL_PREKEY_COUNT,
 	MIN_PREKEY_COUNT,
-	MOBILE_ENDPOINT,
 	MOBILE_NOISE_HEADER,
-	MOBILE_PORT,
-	NOISE_WA_HEADER
 } from '../Defaults'
 import { DisconnectReason, SocketConfig } from '../Types'
 import {
@@ -44,7 +40,7 @@ import {
 	jidEncode,
 	S_WHATSAPP_NET
 } from '../WABinary'
-import { MobileSocketClient, WebSocketClient } from './Client'
+import { MobileSocketClient } from './Client'
 
 /**
  * Connects to WA servers and performs:
@@ -55,10 +51,9 @@ import { MobileSocketClient, WebSocketClient } from './Client'
 
 export const makeSocket = (config: SocketConfig) => {
 	const {
-		waWebSocketUrl,
 		connectTimeoutMs,
 		logger,
-		keepAliveIntervalMs,
+		// keepAliveIntervalMs,
 		browser,
 		auth: authState,
 		printQRInTerminal,
@@ -68,15 +63,7 @@ export const makeSocket = (config: SocketConfig) => {
 		makeSignalRepository,
 	} = config
 
-	let url = typeof waWebSocketUrl === 'string' ? new URL(waWebSocketUrl) : waWebSocketUrl
-
-	config.mobile = config.mobile || url.protocol === 'tcp:'
-
-	if(config.mobile && url.protocol !== 'tcp:') {
-		url = new URL(`tcp://${MOBILE_ENDPOINT}:${MOBILE_PORT}`)
-	}
-
-	const ws = config.socket ? config.socket : config.mobile ? new MobileSocketClient(url, config) : new WebSocketClient(url, config)
+	const ws = new MobileSocketClient()
 
 	ws.connect()
 
@@ -86,8 +73,8 @@ export const makeSocket = (config: SocketConfig) => {
 	/** WA noise protocol wrapper */
 	const noise = makeNoiseHandler({
 		keyPair: ephemeralKeyPair,
-		NOISE_HEADER: config.mobile ? MOBILE_NOISE_HEADER : NOISE_WA_HEADER,
-		mobile: config.mobile,
+		NOISE_HEADER: MOBILE_NOISE_HEADER,
+		mobile: true,
 		logger
 	})
 
@@ -96,7 +83,7 @@ export const makeSocket = (config: SocketConfig) => {
 	const keys = addTransactionCapability(authState.keys, logger, transactionOpts)
 	const signalRepository = makeSignalRepository({ creds, keys })
 
-	let lastDateRecv: Date
+	// let lastDateRecv: Date
 	let epoch = 1
 	let keepAliveReq: NodeJS.Timeout
 	let qrTimer: NodeJS.Timeout
@@ -105,7 +92,7 @@ export const makeSocket = (config: SocketConfig) => {
 	const uqTagId = generateMdTagPrefix()
 	const generateMessageTag = () => `${uqTagId}${epoch++}`
 
-	const sendPromise = promisify(ws.send)
+	const sendPromise = promisify(ws.send).bind(ws)
 	/** send a raw buffer */
 	const sendRawMessage = async(data: Uint8Array | Buffer) => {
 		if(!ws.isOpen) {
@@ -113,17 +100,7 @@ export const makeSocket = (config: SocketConfig) => {
 		}
 
 		const bytes = noise.encodeFrame(data)
-		await promiseTimeout<void>(
-			connectTimeoutMs,
-			async(resolve, reject) => {
-				try {
-					await sendPromise.call(ws, bytes)
-					resolve()
-				} catch(error) {
-					reject(error)
-				}
-			}
-		)
+		await sendPromise(bytes)
 	}
 
 	/** send a binary node */
@@ -158,9 +135,9 @@ export const makeSocket = (config: SocketConfig) => {
 		const result = promiseTimeout<T>(connectTimeoutMs, (resolve, reject) => {
 			onOpen = resolve
 			onClose = mapWebSocketError(reject)
-			ws.on('frame', onOpen)
-			ws.on('close', onClose)
-			ws.on('error', onClose)
+			ws.once('frame', onOpen)
+			ws.once('close', onClose)
+			ws.once('error', onClose)
 		})
 			.finally(() => {
 				ws.off('frame', onOpen)
@@ -191,9 +168,9 @@ export const makeSocket = (config: SocketConfig) => {
 						reject(err || new Boom('Connection Closed', { statusCode: DisconnectReason.connectionClosed }))
 					}
 
-					ws.on(`TAG:${msgId}`, onRecv)
-					ws.on('close', onErr) // if the socket closes, you'll never receive the message
-					ws.off('error', onErr)
+					ws.once(`TAG:${msgId}`, onRecv)
+					ws.once('close', onErr) // if the socket closes, you'll never receive the message
+					ws.once('error', onErr)
 				},
 			)
 		} finally {
@@ -263,7 +240,7 @@ export const makeSocket = (config: SocketConfig) => {
 			}).finish()
 		)
 		noise.finishInit()
-		startKeepAliveRequest()
+		// startKeepAliveRequest()
 	}
 
 	const getAvailablePreKeysOnServer = async() => {
@@ -309,7 +286,7 @@ export const makeSocket = (config: SocketConfig) => {
 	const onMessageRecieved = (data: Buffer) => {
 		noise.decodeFrame(data, frame => {
 			// reset ping timeout
-			lastDateRecv = new Date()
+			// lastDateRecv = new Date()
 
 			let anyTriggered = false
 
@@ -339,6 +316,22 @@ export const makeSocket = (config: SocketConfig) => {
 
 				if(!anyTriggered && logger.level === 'debug') {
 					logger.debug({ unhandled: true, msgId, fromMe: false, frame }, 'communication recv')
+				}
+
+				if(ws.isOpen && creds.me) {
+					if(l1.xmlns) {
+						console.log('send ping')
+						sendNode({
+							tag: 'iq',
+							attrs: {
+								id: generateMessageTag(),
+								to: S_WHATSAPP_NET,
+								type: 'get',
+								xmlns: 'w:p',
+							},
+							content: [{ tag: 'ping', attrs: { } }]
+						})
+					}
 				}
 			}
 		})
@@ -394,9 +387,9 @@ export const makeSocket = (config: SocketConfig) => {
 		await new Promise((resolve, reject) => {
 			onOpen = () => resolve(undefined)
 			onClose = mapWebSocketError(reject)
-			ws.on('open', onOpen)
-			ws.on('close', onClose)
-			ws.on('error', onClose)
+			ws.once('open', onOpen)
+			ws.once('close', onClose)
+			ws.once('error', onClose)
 		})
 			.finally(() => {
 				ws.off('open', onOpen)
@@ -405,41 +398,41 @@ export const makeSocket = (config: SocketConfig) => {
 			})
 	}
 
-	const startKeepAliveRequest = () => (
-		keepAliveReq = setInterval(() => {
-			if(!lastDateRecv) {
-				lastDateRecv = new Date()
-			}
+	// const startKeepAliveRequest = () => (
+	// 	keepAliveReq = setInterval(() => {
+	// 		if(!lastDateRecv) {
+	// 			lastDateRecv = new Date()
+	// 		}
 
-			const diff = Date.now() - lastDateRecv.getTime()
-			/*
-				check if it's been a suspicious amount of time since the server responded with our last seen
-				it could be that the network is down
-			*/
-			if(diff > keepAliveIntervalMs + 5000) {
-				end(new Boom('Connection was lost', { statusCode: DisconnectReason.connectionLost }))
-			} else if(ws.isOpen) {
-				// if its all good, send a keep alive request
-				query(
-					{
-						tag: 'iq',
-						attrs: {
-							id: generateMessageTag(),
-							to: S_WHATSAPP_NET,
-							type: 'get',
-							xmlns: 'w:p',
-						},
-						content: [{ tag: 'ping', attrs: {} }]
-					}
-				)
-					.catch(err => {
-						logger.error({ trace: err.stack }, 'error in sending keep alive')
-					})
-			} else {
-				logger.warn('keep alive called when WS not open')
-			}
-		}, keepAliveIntervalMs)
-	)
+	// 		const diff = Date.now() - lastDateRecv.getTime()
+	// 		/*
+	// 			check if it's been a suspicious amount of time since the server responded with our last seen
+	// 			it could be that the network is down
+	// 		*/
+	// 		if(diff > keepAliveIntervalMs + 5000) {
+	// 			end(new Boom('Connection was lost', { statusCode: DisconnectReason.connectionLost }))
+	// 		} else if(ws.isOpen) {
+	// 			// if its all good, send a keep alive request
+	// 			query(
+	// 				{
+	// 					tag: 'iq',
+	// 					attrs: {
+	// 						id: generateMessageTag(),
+	// 						to: S_WHATSAPP_NET,
+	// 						type: 'get',
+	// 						xmlns: 'w:p',
+	// 					},
+	// 					content: [{ tag: 'ping', attrs: {} }]
+	// 				}
+	// 			)
+	// 				.catch(err => {
+	// 					logger.error({ trace: err.stack }, 'error in sending keep alive')
+	// 				})
+	// 		} else {
+	// 			logger.warn('keep alive called when WS not open')
+	// 		}
+	// 	}, keepAliveIntervalMs)
+	// )
 	/** i have no idea why this exists. pls enlighten me */
 	const sendPassiveIq = (tag: 'passive' | 'active') => (
 		query({
@@ -680,19 +673,6 @@ export const makeSocket = (config: SocketConfig) => {
 
 	// update credentials when required
 	ev.on('creds.update', update => {
-		const name = update.me?.name
-		// if name has just been received
-		if(creds.me?.name !== name) {
-			logger.debug({ name }, 'updated pushName')
-			sendNode({
-				tag: 'presence',
-				attrs: { name: name! }
-			})
-				.catch(err => {
-					logger.warn({ trace: err.stack }, 'error in sending presence update on name change')
-				})
-		}
-
 		Object.assign(creds, update)
 	})
 

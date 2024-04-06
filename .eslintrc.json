@@ -12,6 +12,7 @@
                 "ignoreRestArgs": true
             }
         ],
+        "linebreak-style": 0,
         "@typescript-eslint/no-inferrable-types": [
             "warn"
         ],

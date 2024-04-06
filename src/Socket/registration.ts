@@ -1,10 +1,47 @@
 /* eslint-disable camelcase */
 import axios, { AxiosRequestConfig } from 'axios'
-import { MOBILE_REGISTRATION_ENDPOINT, MOBILE_TOKEN, MOBILE_USERAGENT, REGISTRATION_PUBLIC_KEY } from '../Defaults'
+// import crypto from 'crypto'
+import { MOBILE_REGISTRATION_ENDPOINT, MOBILE_USERAGENT, REGISTRATION_PUBLIC_KEY } from '../Defaults'
 import { KeyPair, SignedKeyPair, SocketConfig } from '../Types'
-import { aesEncryptGCM, Curve, md5 } from '../Utils/crypto'
+import { aesEncryptGCM, Curve } from '../Utils/crypto'
 import { jidEncode } from '../WABinary'
 import { makeBusinessSocket } from './business'
+
+// function getToken(phoneNumber) {
+// 	const keyDecoded: Buffer = Buffer.from(
+// 		Buffer.from(_KEY, 'base64').toString('binary'),
+// 		'binary'
+// 	)
+// 	const sigDecoded: Buffer = Buffer.from(
+// 		_SIGNATURE,
+// 		'base64'
+// 	)
+// 	const clsDecoded: Buffer = Buffer.from(
+// 		_MD5_CLASSES,
+// 		'base64'
+// 	)
+// 	const data: Buffer = Buffer.concat([sigDecoded, clsDecoded, Buffer.from(phoneNumber)])
+
+// 	const opad: Buffer = Buffer.alloc(64)
+// 	const ipad: Buffer = Buffer.alloc(64)
+// 	for(let i = 0; i < 64; i++) {
+// 		opad[i] = 0x5C ^ keyDecoded[i]
+// 		ipad[i] = 0x36 ^ keyDecoded[i]
+// 	}
+
+// 	const hash: crypto.Hash = crypto.createHash('sha1')
+// 	const subHash: crypto.Hash = crypto.createHash('sha1')
+// 	try {
+// 		subHash.update(Buffer.concat([ipad, data]))
+// 		hash.update(Buffer.concat([opad, subHash.digest()]))
+// 	} catch(error) {
+// 		subHash.update(Buffer.concat([ipad, data]))
+// 		hash.update(Buffer.concat([opad, subHash.digest()]))
+// 	}
+
+// 	const result: string = hash.digest('base64')
+// 	return result
+// }
 
 function urlencode(str: string) {
 	return str.replace(/-/g, '%2d').replace(/_/g, '%5f').replace(/~/g, '%7e')
@@ -22,7 +59,7 @@ export const makeRegistrationSocket = (config: SocketConfig) => {
 			throw new Error('please specify the registration options')
 		}
 
-		const result = await mobileRegister({ ...sock.authState.creds, ...sock.authState.creds.registration as RegistrationOptions, code }, config.options)
+		const result = await mobileRegister({ ...sock.authState.creds, ...sock.authState.creds.registration, code }, config.options)
 
 		sock.authState.creds.me = {
 			id: jidEncode(result.login!, 's.whatsapp.net'),
@@ -122,7 +159,7 @@ export function registrationParams(params: RegistrationParams) {
 		Rc: '0',
 		lg: 'en',
 		lc: 'GB',
-		mistyped: '6',
+		mistyped: '7',
 		authkey: Buffer.from(params.noiseKey.public).toString('base64url'),
 		e_regid: e_regid.toString('base64url'),
 		e_keytype: 'BQ',
@@ -132,14 +169,15 @@ export function registrationParams(params: RegistrationParams) {
 		e_skey_val: Buffer.from(params.signedPreKey.keyPair.public).toString('base64url'),
 		e_skey_sig: Buffer.from(params.signedPreKey.signature).toString('base64url'),
 		fdid: params.phoneId,
-		network_ratio_type: '1',
+		network_radio_type: '1',
 		expid: params.deviceId,
 		simnum: '1',
 		hasinrc: '1',
+		device_ram: '4',
 		pid: Math.floor(Math.random() * 1000).toString(),
 		id: convertBufferToUrlHex(params.identityId),
 		backup_token: convertBufferToUrlHex(params.backupToken),
-		token: md5(Buffer.concat([MOBILE_TOKEN, Buffer.from(params.phoneNumberNationalNumber)])).toString('hex'),
+		token: params.phoneNumberNationalNumber,
 		fraud_checkpoint_code: params.captcha,
 	}
 }
@@ -153,11 +191,13 @@ export function mobileRegisterCode(params: RegistrationParams, fetchOptions?: Ax
 			...registrationParams(params),
 			mcc: `${params.phoneNumberMobileCountryCode}`.padStart(3, '0'),
 			mnc: `${params.phoneNumberMobileNetworkCode || '001'}`.padStart(3, '0'),
-			sim_mcc: '000',
-			sim_mnc: '000',
+			sim_mcc: `${params.phoneNumberMobileCountryCode}`.padStart(3, '0'),
+			sim_mnc: `${params.phoneNumberMobileNetworkCode || '001'}`.padStart(3, '0'),
 			method: params?.method || 'sms',
 			reason: '',
-			hasav: '1'
+			hasav: '2',
+			gpia: JSON.stringify({ error_code: -2 }),
+			client_metrics: JSON.stringify({ 'attempts':1 })
 		},
 		...fetchOptions,
 	})

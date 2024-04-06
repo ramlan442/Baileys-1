@@ -32,7 +32,6 @@ type BufferableEvent = typeof BUFFERABLE_EVENT[number]
  */
 type BaileysEventData = Partial<BaileysEventMap>
 
-const BUFFERABLE_EVENT_SET = new Set<BaileysEvent>(BUFFERABLE_EVENT)
 
 type BaileysBufferableEventEmitter = BaileysEventEmitter & {
 	/** Use to process events in a batch */
@@ -60,10 +59,6 @@ type BaileysBufferableEventEmitter = BaileysEventEmitter & {
  */
 export const makeEventBuffer = (logger: Logger): BaileysBufferableEventEmitter => {
 	const ev = new EventEmitter()
-	const historyCache = new Set<string>()
-
-	let data = makeBufferData()
-	let buffersInProgress = 0
 
 	// take the generic event and fire it as a baileys event
 	ev.on('event', (map: BaileysEventData) => {
@@ -73,49 +68,9 @@ export const makeEventBuffer = (logger: Logger): BaileysBufferableEventEmitter =
 	})
 
 	function buffer() {
-		buffersInProgress += 1
 	}
 
 	function flush(force = false) {
-		// no buffer going on
-		if(!buffersInProgress) {
-			return false
-		}
-
-		if(!force) {
-			// reduce the number of buffers in progress
-			buffersInProgress -= 1
-			// if there are still some buffers going on
-			// then we don't flush now
-			if(buffersInProgress) {
-				return false
-			}
-		}
-
-		const newData = makeBufferData()
-		const chatUpdates = Object.values(data.chatUpdates)
-		// gather the remaining conditional events so we re-queue them
-		let conditionalChatUpdatesLeft = 0
-		for(const update of chatUpdates) {
-			if(update.conditional) {
-				conditionalChatUpdatesLeft += 1
-				newData.chatUpdates[update.id!] = update
-				delete data.chatUpdates[update.id!]
-			}
-		}
-
-		const consolidatedData = consolidateEvents(data)
-		if(Object.keys(consolidatedData).length) {
-			ev.emit('event', consolidatedData)
-		}
-
-		data = newData
-
-		logger.trace(
-			{ conditionalChatUpdatesLeft },
-			'released buffered events'
-		)
-
 		return true
 	}
 
@@ -125,21 +80,16 @@ export const makeEventBuffer = (logger: Logger): BaileysBufferableEventEmitter =
 				handler(map)
 			}
 
-			ev.on('event', listener)
+			ev.once('event', listener)
 			return () => {
 				ev.off('event', listener)
 			}
 		},
 		emit<T extends BaileysEvent>(event: BaileysEvent, evData: BaileysEventMap[T]) {
-			if(buffersInProgress && BUFFERABLE_EVENT_SET.has(event)) {
-				append(data, historyCache, event as any, evData, logger)
-				return true
-			}
-
-			return ev.emit('event', { [event]: evData })
+			return ev.emit(event, evData)
 		},
 		isBuffering() {
-			return buffersInProgress > 0
+			return false
 		},
 		buffer,
 		flush,

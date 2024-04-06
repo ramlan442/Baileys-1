@@ -1,36 +1,19 @@
-export const makeMutex = () => {
-	let task = Promise.resolve() as Promise<any>
+import { Mutex } from 'async-mutex'
 
-	let taskTimeout: NodeJS.Timeout | undefined
+export const makeMutex = () => {
+	const mutex = new Mutex()
 
 	return {
 		mutex<T>(code: () => Promise<T> | T): Promise<T> {
-			task = (async() => {
-				// wait for the previous task to complete
-				// if there is an error, we swallow so as to not block the queue
-				try {
-					await task
-				} catch{ }
-
-				try {
-					// execute the current task
-					const result = await code()
-					return result
-				} finally {
-					clearTimeout(taskTimeout)
-				}
-			})()
-			// we replace the existing task, appending the new piece of execution to it
-			// so the next task will have to wait for this one to finish
-			return task
+			return mutex.runExclusive(code)
 		},
 	}
 }
 
-export type Mutex = ReturnType<typeof makeMutex>
+export type MutexType = ReturnType<typeof makeMutex>
 
 export const makeKeyedMutex = () => {
-	const map: { [id: string]: Mutex } = {}
+	const map: { [id: string]: MutexType } = {}
 
 	return {
 		mutex<T>(key: string, task: () => Promise<T> | T): Promise<T> {

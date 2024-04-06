@@ -1,4 +1,6 @@
+import type { StorageType } from '@privacyresearch/libsignal-protocol-typescript'
 import { proto } from '../../WAProto'
+import type { SenderKeyRecord } from '../../WASignalGroup'
 
 type DecryptGroupSignalOpts = {
 	group: string
@@ -47,6 +49,11 @@ type E2ESession = {
 type E2ESessionOpts = {
 	jid: string
 	session: E2ESession
+}
+
+export interface SignalStorage extends StorageType {
+	loadSenderKey: (keyId: string) => Promise<SenderKeyRecord>
+	storeSenderKey: (keyId, key) => void
 }
 
 export type SignalRepository = {

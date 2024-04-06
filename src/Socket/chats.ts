@@ -32,7 +32,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 
 	let privacySettings: { [_: string]: string } | undefined
 	let needToFlushWithAppStateSync = false
-	let pendingAppStateSync = false
+	const pendingAppStateSync = false
 	/** this mutex ensures that the notifications (receipts, messages etc.) are processed in order */
 	const processingMutex = makeMutex()
 
@@ -42,7 +42,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		return key
 	}
 
-	const fetchPrivacySettings = async(force: boolean = false) => {
+	const fetchPrivacySettings = async(force = false) => {
 		if(!privacySettings || force) {
 			const { content } = await query({
 				tag: 'iq',
@@ -540,7 +540,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	const sendPresenceUpdate = async(type: WAPresence, toJid?: string) => {
 		const me = authState.creds.me!
 		if(type === 'available' || type === 'unavailable') {
-			if(!me!.name) {
+			if(!me.name) {
 				logger.warn('no name present, ignoring presence update request...')
 				return
 			}
@@ -550,7 +550,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			await sendNode({
 				tag: 'presence',
 				attrs: {
-					name: me!.name,
+					name: me.name,
 					type
 				}
 			})
@@ -558,7 +558,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			await sendNode({
 				tag: 'chatstate',
 				attrs: {
-					from: me!.id!,
+					from: me.id,
 					to: toJid!,
 				},
 				content: [
@@ -646,7 +646,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 					async() => {
 						logger.debug({ patch: patchCreate }, 'applying app patch')
 
-						await resyncAppState([name], false)
+						// await resyncAppState([name], false)
 
 						const { [name]: currentSyncVersion } = await authState.keys.get('app-state-sync-version', [name])
 						initial = currentSyncVersion || newLTHashState()
@@ -773,8 +773,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	 * requires the last messages till the last message received; required for archive & unread
 	*/
 	const chatModify = (mod: ChatModification, jid: string) => {
-		const patch = chatModificationToAppPatch(mod, jid)
-		return appPatch(patch)
+		// const patch = chatModificationToAppPatch(mod, jid)
+		return
 	}
 
 	/**
@@ -848,83 +848,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		])
 	}
 
-	const upsertMessage = ev.createBufferedFunction(async(msg: WAMessage, type: MessageUpsertType) => {
-		ev.emit('messages.upsert', { messages: [msg], type })
-
-		if(!!msg.pushName) {
-			let jid = msg.key.fromMe ? authState.creds.me!.id : (msg.key.participant || msg.key.remoteJid)
-			jid = jidNormalizedUser(jid!)
-
-			if(!msg.key.fromMe) {
-				ev.emit('contacts.update', [{ id: jid, notify: msg.pushName, verifiedName: msg.verifiedBizName! }])
-			}
-
-			// update our pushname too
-			if(msg.key.fromMe && msg.pushName && authState.creds.me?.name !== msg.pushName) {
-				ev.emit('creds.update', { me: { ...authState.creds.me!, name: msg.pushName! } })
-			}
-		}
-
-		const historyMsg = getHistoryMsg(msg.message!)
-		const shouldProcessHistoryMsg = historyMsg
-			? (
-				shouldSyncHistoryMessage(historyMsg)
-				&& PROCESSABLE_HISTORY_TYPES.includes(historyMsg.syncType!)
-			)
-			: false
-
-		if(historyMsg && !authState.creds.myAppStateKeyId) {
-			logger.warn('skipping app state sync, as myAppStateKeyId is not set')
-			pendingAppStateSync = true
-		}
-
-		await Promise.all([
-			(async() => {
-				if(
-					historyMsg
-					&& authState.creds.myAppStateKeyId
-				) {
-					pendingAppStateSync = false
-					await doAppStateSync()
-				}
-			})(),
-			processMessage(
-				msg,
-				{
-					shouldProcessHistoryMsg,
-					ev,
-					creds: authState.creds,
-					keyStore: authState.keys,
-					logger,
-					options: config.options,
-					getMessage: config.getMessage,
-				}
-			)
-		])
-
-		if(
-			msg.message?.protocolMessage?.appStateSyncKeyShare
-			&& pendingAppStateSync
-		) {
-			await doAppStateSync()
-			pendingAppStateSync = false
-		}
-
-		async function doAppStateSync() {
-			if(!authState.creds.accountSyncCounter) {
-				logger.info('doing initial app state sync')
-				await resyncAppState(ALL_WA_PATCH_NAMES, true)
-
-				const accountSyncCounter = (authState.creds.accountSyncCounter || 0) + 1
-				ev.emit('creds.update', { accountSyncCounter })
-
-				if(needToFlushWithAppStateSync) {
-					logger.debug('flushing with app state sync')
-					ev.flush()
-				}
-			}
-		}
-	})
+	const upsertMessage = async(msg: WAMessage, type: MessageUpsertType) => ev.emit('messages.upsert', { messages: [msg], type })
 
 	ws.on('CB:presence', handlePresenceUpdate)
 	ws.on('CB:chatstate', handlePresenceUpdate)

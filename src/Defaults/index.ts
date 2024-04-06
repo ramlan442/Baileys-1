@@ -4,6 +4,7 @@ import { makeLibSignalRepository } from '../Signal/libsignal'
 import type { AuthenticationState, MediaType, SocketConfig, WAVersion } from '../Types'
 import { Browsers } from '../Utils'
 import logger from '../Utils/logger'
+import { isJidBroadcast, isJidStatusBroadcast } from '../WABinary'
 import { version } from './baileys-version.json'
 import phoneNumberMCC from './phonenumber-mcc.json'
 
@@ -55,7 +56,7 @@ export const PROCESSABLE_HISTORY_TYPES = [
 
 export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	version: version as WAVersion,
-	browser: Browsers.ubuntu('Chrome'),
+	browser: Browsers.windows('Desktop'),
 	waWebSocketUrl: 'wss://web.whatsapp.com/ws/chat',
 	connectTimeoutMs: 20_000,
 	keepAliveIntervalMs: 30_000,
@@ -66,13 +67,13 @@ export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	customUploadHosts: [],
 	retryRequestDelayMs: 250,
 	maxMsgRetryCount: 5,
-	fireInitQueries: true,
+	fireInitQueries: false,
 	auth: undefined as unknown as AuthenticationState,
 	markOnlineOnConnect: true,
 	syncFullHistory: false,
 	patchMessageBeforeSending: msg => msg,
-	shouldSyncHistoryMessage: () => true,
-	shouldIgnoreJid: () => false,
+	shouldSyncHistoryMessage: () => false,
+	shouldIgnoreJid: (jid) => isJidBroadcast(jid),
 	linkPreviewImageThumbnailWidth: 192,
 	transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
 	generateHighQualityLinkPreview: false,

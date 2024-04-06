@@ -10,6 +10,7 @@ const KEY_MAP: { [T in keyof SignalDataTypeMap]: string } = {
 	'pre-key': 'preKeys',
 	'session': 'sessions',
 	'sender-key': 'senderKeys',
+	'signed-pre-key': 'signedPreKey',
 	'app-state-sync-key': 'appStateSyncKeys',
 	'app-state-sync-version': 'appStateVersions',
 	'sender-key-memory': 'senderKeyMemory'

@@ -1,7 +1,7 @@
 import { Boom } from '@hapi/boom'
 import { createHash } from 'crypto'
 import { proto } from '../../WAProto'
-import { KEY_BUNDLE_TYPE } from '../Defaults'
+import { KEY_BUNDLE_TYPE, MOBILE_USERAGENT } from '../Defaults'
 import type { AuthenticationCreds, SignalCreds, SocketConfig } from '../Types'
 import { BinaryNode, getBinaryNodeChild, jidDecode, S_WHATSAPP_NET } from '../WABinary'
 import { Curve, hmacSign } from './crypto'
@@ -9,11 +9,11 @@ import { encodeBigEndian } from './generics'
 import { createSignalIdentity } from './signal'
 
 const getUserAgent = (config: SocketConfig): proto.ClientPayload.IUserAgent => {
-	const osVersion = config.mobile ? '15.3.1' : '0.1'
-	const version = config.mobile ? [2, 22, 24] : config.version
-	const device = config.mobile ? 'iPhone_7' : 'Desktop'
-	const manufacturer = config.mobile ? 'Apple' : ''
-	const platform = config.mobile ? proto.ClientPayload.UserAgent.Platform.IOS : proto.ClientPayload.UserAgent.Platform.MACOS
+	const osVersion = config.mobile ? '14.0.0' : '11'
+	const version = config.mobile ? MOBILE_USERAGENT.match(/(\d+\.\d+\.\d+\.\d+)/g)![0].split('.').map(d => +d).slice(0, -1) : config.version
+	const device = config.mobile ? 'Android' : 'Windows'
+	const manufacturer = config.mobile ? 'Pixel' : 'Windows'
+	const platform = config.mobile ? proto.ClientPayload.UserAgent.Platform.ANDROID : proto.ClientPayload.UserAgent.Platform.WINDOWS
 	const phoneId = config.mobile ? { phoneId: config.auth.creds.phoneId } : {}
 
 	return {
@@ -70,11 +70,33 @@ export const generateMobileNode = (config: SocketConfig): proto.IClientPayload =
 
 export const generateLoginNode = (userJid: string, config: SocketConfig): proto.IClientPayload => {
 	const { user, device } = jidDecode(userJid)!
+	const companion: proto.IDeviceProps = {
+		os: config.browser[0],
+		platformType: proto.DeviceProps.PlatformType.DESKTOP,
+		requireFullSync: false,
+		historySyncConfig: {
+			fullSyncDaysLimit: 1,
+			fullSyncSizeMbLimit: 1,
+			recentSyncDaysLimit: 1,
+			supportBotUserAgentChatHistory: false,
+			supportCagReactionsAndPolls: false,
+			supportCallLogHistory: false
+		}
+	}
+	const companionProto = proto.DeviceProps.encode(companion).finish()
 	const payload: proto.IClientPayload = {
 		...getClientPayload(config),
 		passive: true,
 		username: +user,
 		device: device,
+		devicePairingData: {
+			deviceProps: companionProto
+		},
+		shortConnect: true,
+		dnsSource: {
+			appCached: true,
+			dnsMethod: proto.ClientPayload.DNSSource.DNSResolutionMethod.GOOGLE,
+		}
 	}
 	return proto.ClientPayload.fromObject(payload)
 }
@@ -97,7 +119,7 @@ export const generateRegistrationNode = (
 	const companion: proto.IDeviceProps = {
 		os: config.browser[0],
 		platformType: getPlatformType(config.browser[1]),
-		requireFullSync: config.syncFullHistory,
+		requireFullSync: false,
 	}
 
 	const companionProto = proto.DeviceProps.encode(companion).finish()

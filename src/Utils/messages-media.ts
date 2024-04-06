@@ -85,10 +85,10 @@ const extractVideoThumb = async(
     		if(err) {
 			reject(err)
 		} else {
-			resolve()
+			resolve(true)
 		}
     	})
-}) as Promise<void>
+})
 
 export const extractImageThumb = async(bufferOrFilePath: Readable | Buffer | string, width = 32) => {
 	if(bufferOrFilePath instanceof Readable) {
@@ -97,7 +97,7 @@ export const extractImageThumb = async(bufferOrFilePath: Readable | Buffer | str
 
 	const lib = await getImageProcessingLibrary()
 	if('sharp' in lib && typeof lib.sharp?.default === 'function') {
-		const img = lib.sharp!.default(bufferOrFilePath)
+		const img = lib.sharp.default(bufferOrFilePath)
 		const dimensions = await img.metadata()
 
 		const buffer = await img
@@ -154,7 +154,7 @@ export const generateProfilePicture = async(mediaUpload: WAMediaUpload) => {
 	const lib = await getImageProcessingLibrary()
 	let img: Promise<Buffer>
 	if('sharp' in lib && typeof lib.sharp?.default === 'function') {
-		img = lib.sharp!.default(bufferOrFilePath)
+		img = lib.sharp.default(bufferOrFilePath)
 			.resize(640, 640)
 			.jpeg({
 				quality: 50,
@@ -252,10 +252,29 @@ export async function getAudioWaveform(buffer: Buffer | string | Readable, logge
 }
 
 
-export const toReadable = (buffer: Buffer) => {
-	const readable = new Readable({ read: () => {} })
-	readable.push(buffer)
-	readable.push(null)
+export const toReadable = (buffer: Buffer, chunkSize = 1000) => {
+	let offset = 0
+
+	const readable = new Readable({
+		read() {
+			if(offset < buffer.length) {
+				// Tentukan ukuran chunk yang akan dikirimkan
+				const chunkEnd = Math.min(offset + chunkSize, buffer.length)
+				// Potong buffer dari offset hingga chunkEnd
+				const chunk = buffer.slice(offset, chunkEnd)
+				// Kirim chunk ke stream
+				this.push(chunk)
+				// Update offset dengan akhir dari chunk yang baru dikirimkan
+				offset = chunkEnd
+			}
+
+			// Jika semua data sudah dipush, kirim signal 'null' untuk 'end of stream'
+			if(offset >= buffer.length) {
+				this.push(null)
+			}
+		}
+	})
+
 	return readable
 }
 
@@ -364,11 +383,9 @@ export const encryptedStream = async(
 	let hmac = Crypto.createHmac('sha256', macKey!).update(iv)
 	let sha256Plain = Crypto.createHash('sha256')
 	let sha256Enc = Crypto.createHash('sha256')
-
 	try {
 		for await (const data of stream) {
 			fileLength += data.length
-
 			if(
 				type === 'remote'
 				&& opts?.maxContentLength
@@ -404,7 +421,6 @@ export const encryptedStream = async(
 		encWriteStream.push(null)
 
 		writeStream?.end()
-		stream.destroy()
 
 		logger?.debug('encrypted data successfully')
 
@@ -502,9 +518,9 @@ export const downloadEncryptedContent = async(
 		Origin: DEFAULT_ORIGIN,
 	}
 	if(startChunk || endChunk) {
-		headers!.Range = `bytes=${startChunk}-`
+		headers.Range = `bytes=${startChunk}-`
 		if(endChunk) {
-			headers!.Range += endChunk
+			headers.Range += endChunk
 		}
 	}
 

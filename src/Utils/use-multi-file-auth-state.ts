@@ -1,6 +1,6 @@
-import { mkdir, readFile, stat, unlink, writeFile } from 'fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'fs/promises'
+import NodeCache from 'node-cache'
 import { join } from 'path'
-import { proto } from '../../WAProto'
 import { AuthenticationCreds, AuthenticationState, SignalDataTypeMap } from '../Types'
 import { initAuthCreds } from './auth-utils'
 import { BufferJSON } from './generics'
@@ -12,7 +12,10 @@ import { BufferJSON } from './generics'
  * Again, I wouldn't endorse this for any production level use other than perhaps a bot.
  * Would recommend writing an auth state for use with a proper SQL or No-SQL DB
  * */
-export const useMultiFileAuthState = async(folder: string): Promise<{ state: AuthenticationState, saveCreds: () => Promise<void> }> => {
+export const useMultiFileAuthState = async(folder: string): Promise<{ state: AuthenticationState, saveCreds: () => Promise<void>, cache: NodeCache }> => {
+	const cache = new NodeCache({
+		useClones: false
+	})
 
 	const writeData = (data: any, file: string) => {
 		return writeFile(join(folder, fixFileName(file)!), JSON.stringify(data, BufferJSON.replacer))
@@ -27,12 +30,8 @@ export const useMultiFileAuthState = async(folder: string): Promise<{ state: Aut
 		}
 	}
 
-	const removeData = async(file: string) => {
-		try {
-			await unlink(join(folder, fixFileName(file)!))
-		} catch{
-
-		}
+	function getUniqueId(type: string, id: string) {
+		return `${type}.${id}`
 	}
 
 	const folderInfo = await stat(folder).catch(() => { })
@@ -49,37 +48,33 @@ export const useMultiFileAuthState = async(folder: string): Promise<{ state: Aut
 	const creds: AuthenticationCreds = await readData('creds.json') || initAuthCreds()
 
 	return {
+		cache,
 		state: {
 			creds,
 			keys: {
 				get: async(type, ids) => {
-					const data: { [_: string]: SignalDataTypeMap[typeof type] } = { }
-					await Promise.all(
-						ids.map(
-							async id => {
-								let value = await readData(`${type}-${id}.json`)
-								if(type === 'app-state-sync-key' && value) {
-									value = proto.Message.AppStateSyncKeyData.fromObject(value)
-								}
-
-								data[id] = value
+					return ids.reduce(
+						async(dict, id) => {
+							const key = getUniqueId(type, id)
+							const value = cache.get<SignalDataTypeMap[typeof type]>(key)
+							if(value) {
+								dict[id] = value
 							}
-						)
-					)
 
-					return data
+							return dict
+						}, { }
+					)
 				},
 				set: async(data) => {
-					const tasks: Promise<void>[] = []
-					for(const category in data) {
-						for(const id in data[category]) {
-							const value = data[category][id]
-							const file = `${category}-${id}.json`
-							tasks.push(value ? writeData(value, file) : removeData(file))
+					for(const type in data) {
+						for(const id in data[type]) {
+							const value = data[type][id]
+							const key = getUniqueId(type, id)
+							if(value) {
+								cache.set(key, value)
+							}
 						}
 					}
-
-					await Promise.all(tasks)
 				}
 			}
 		},

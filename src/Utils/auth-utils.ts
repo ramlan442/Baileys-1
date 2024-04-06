@@ -87,108 +87,11 @@ export const addTransactionCapability = (
 	logger: Logger,
 	{ maxCommitRetries, delayBetweenTriesMs }: TransactionCapabilityOptions
 ): SignalKeyStoreWithTransaction => {
-	// number of queries made to the DB during the transaction
-	// only there for logging purposes
-	let dbQueriesInTransaction = 0
-	let transactionCache: SignalDataSet = { }
-	let mutations: SignalDataSet = { }
-
-	let transactionsInProgress = 0
-
 	return {
-		get: async(type, ids) => {
-			if(isInTransaction()) {
-				const dict = transactionCache[type]
-				const idsRequiringFetch = dict
-					? ids.filter(item => typeof dict[item] === 'undefined')
-					: ids
-				// only fetch if there are any items to fetch
-				if(idsRequiringFetch.length) {
-					dbQueriesInTransaction += 1
-					const result = await state.get(type, idsRequiringFetch)
-
-					transactionCache[type] ||= {}
-					Object.assign(
-						transactionCache[type]!,
-						result
-					)
-				}
-
-				return ids.reduce(
-					(dict, id) => {
-						const value = transactionCache[type]?.[id]
-						if(value) {
-							dict[id] = value
-						}
-
-						return dict
-					}, { }
-				)
-			} else {
-				return state.get(type, ids)
-			}
-		},
-		set: data => {
-			if(isInTransaction()) {
-				logger.trace({ types: Object.keys(data) }, 'caching in transaction')
-				for(const key in data) {
-					transactionCache[key] = transactionCache[key] || { }
-					Object.assign(transactionCache[key], data[key])
-
-					mutations[key] = mutations[key] || { }
-					Object.assign(mutations[key], data[key])
-				}
-			} else {
-				return state.set(data)
-			}
-		},
-		isInTransaction,
-		async transaction(work) {
-			let result: Awaited<ReturnType<typeof work>>
-			transactionsInProgress += 1
-			if(transactionsInProgress === 1) {
-				logger.trace('entering transaction')
-			}
-
-			try {
-				result = await work()
-				// commit if this is the outermost transaction
-				if(transactionsInProgress === 1) {
-					if(Object.keys(mutations).length) {
-						logger.trace('committing transaction')
-						// retry mechanism to ensure we've some recovery
-						// in case a transaction fails in the first attempt
-						let tries = maxCommitRetries
-						while(tries) {
-							tries -= 1
-							try {
-								await state.set(mutations)
-								logger.trace({ dbQueriesInTransaction }, 'committed transaction')
-								break
-							} catch(error) {
-								logger.warn(`failed to commit ${Object.keys(mutations).length} mutations, tries left=${tries}`)
-								await delay(delayBetweenTriesMs)
-							}
-						}
-					} else {
-						logger.trace('no mutations in transaction')
-					}
-				}
-			} finally {
-				transactionsInProgress -= 1
-				if(transactionsInProgress === 0) {
-					transactionCache = { }
-					mutations = { }
-					dbQueriesInTransaction = 0
-				}
-			}
-
-			return result
-		}
-	}
-
-	function isInTransaction() {
-		return transactionsInProgress > 0
+		get: async(type, ids) => state.get(type, ids),
+		set: data => state.set(data),
+		isInTransaction: () => false,
+		transaction: async(work) => await work()
 	}
 }
 

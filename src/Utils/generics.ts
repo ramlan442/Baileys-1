@@ -44,7 +44,7 @@ export const BufferJSON = {
 
 export const getKeyAuthor = (
 	key: proto.IMessageKey | undefined | null,
-	meId: string = 'me'
+	meId = 'me'
 ) => (
 	(key?.fromMe ? meId : key?.participant || key?.remoteJid) || ''
 )
@@ -101,7 +101,7 @@ export const unixTimestampSeconds = (date: Date = new Date()) => Math.floor(date
 
 export type DebouncedTimeout = ReturnType<typeof debouncedTimeout>
 
-export const debouncedTimeout = (intervalMs: number = 1000, task?: () => void) => {
+export const debouncedTimeout = (intervalMs = 1000, task?: () => void) => {
 	let timeout: NodeJS.Timeout | undefined
 	return {
 		start: (newIntervalMs?: number, newTask?: () => void) => {
@@ -171,7 +171,7 @@ export async function promiseTimeout<T>(ms: number | undefined, promise: (resolv
 }
 
 // generate a random ID to attach to a message
-export const generateMessageID = () => 'BAE5' + randomBytes(6).toString('hex').toUpperCase()
+export const generateMessageID = (id = '3E6CA92FA1EADAB6C5DA') => id.slice(0, 20) + randomBytes(6).toString('hex').toUpperCase()
 
 export function bindWaitForEvent<T extends keyof BaileysEventMap>(ev: BaileysEventEmitter, event: T) {
 	return async(check: (u: BaileysEventMap[T]) => boolean | undefined, timeoutMs?: number) => {
@@ -279,8 +279,8 @@ export const fetchLatestWaWebVersion = async(options: AxiosRequestConfig<any>) =
 
 /** unique message tag prefix for MD clients */
 export const generateMdTagPrefix = () => {
-	const bytes = randomBytes(4)
-	return `${bytes.readUInt16BE()}.${bytes.readUInt16BE(2)}-`
+	const bytes = randomBytes(8)
+	return `${bytes.readUInt16BE()}.${bytes.readUInt16BE(4)}-`
 }
 
 const STATUS_MAP: { [_: string]: proto.WebMessageInfo.Status } = {

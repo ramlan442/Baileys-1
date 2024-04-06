@@ -123,9 +123,8 @@ export const decryptMessageNode = (
 		category: stanza.attrs.category,
 		author,
 		async decrypt() {
-			let decryptables = 0
 			if(Array.isArray(stanza.content)) {
-				for(const { tag, attrs, content } of stanza.content) {
+				const tasks = stanza.content.map(async({ tag, attrs, content }) => {
 					if(tag === 'verified_name' && content instanceof Uint8Array) {
 						const cert = proto.VerifiedNameCertificate.decode(content)
 						const details = proto.VerifiedNameCertificate.Details.decode(cert.details)
@@ -133,14 +132,12 @@ export const decryptMessageNode = (
 					}
 
 					if(tag !== 'enc') {
-						continue
+						return
 					}
 
 					if(!(content instanceof Uint8Array)) {
-						continue
+						return
 					}
-
-					decryptables += 1
 
 					let msgBuffer: Uint8Array
 
@@ -181,6 +178,7 @@ export const decryptMessageNode = (
 						} else {
 							fullMessage.message = msg
 						}
+
 					} catch(err) {
 						logger.error(
 							{ key: fullMessage.key, err },
@@ -189,11 +187,12 @@ export const decryptMessageNode = (
 						fullMessage.messageStubType = proto.WebMessageInfo.StubType.CIPHERTEXT
 						fullMessage.messageStubParameters = [err.message]
 					}
-				}
+				})
+				await Promise.all(tasks)
 			}
 
 			// if nothing was found to decrypt
-			if(!decryptables) {
+			if(!fullMessage.message) {
 				fullMessage.messageStubType = proto.WebMessageInfo.StubType.CIPHERTEXT
 				fullMessage.messageStubParameters = [NO_MESSAGE_FOUND_ERROR_TEXT]
 			}

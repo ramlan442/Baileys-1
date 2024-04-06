@@ -1,7 +1,7 @@
-import * as libsignal from 'libsignal'
+import * as libsignal from '@privacyresearch/libsignal-protocol-typescript'
 import { GroupCipher, GroupSessionBuilder, SenderKeyDistributionMessage, SenderKeyName, SenderKeyRecord } from '../../WASignalGroup'
 import { SignalAuthState } from '../Types'
-import { SignalRepository } from '../Types/Signal'
+import { SignalRepository, SignalStorage } from '../Types/Signal'
 import { generateSignalPubKey } from '../Utils'
 import { jidDecode } from '../WABinary'
 
@@ -32,10 +32,10 @@ export function makeLibSignalRepository(auth: SignalAuthState): SignalRepository
 			let result: Buffer
 			switch (type) {
 			case 'pkmsg':
-				result = await session.decryptPreKeyWhisperMessage(ciphertext)
+				result = await session.decryptPreKeyWhisperMessage(ciphertext) as any
 				break
 			case 'msg':
-				result = await session.decryptWhisperMessage(ciphertext)
+				result = await session.decryptWhisperMessage(ciphertext) as any
 				break
 			}
 
@@ -47,7 +47,7 @@ export function makeLibSignalRepository(auth: SignalAuthState): SignalRepository
 
 			const { type: sigType, body } = await cipher.encrypt(data)
 			const type = sigType === 3 ? 'pkmsg' : 'msg'
-			return { type, ciphertext: Buffer.from(body, 'binary') }
+			return { type, ciphertext: Buffer.from(body!, 'binary') }
 		},
 		async encryptGroupMessage({ group, meId, data }) {
 			const senderName = jidToSignalSenderKeyName(group, meId)
@@ -69,7 +69,7 @@ export function makeLibSignalRepository(auth: SignalAuthState): SignalRepository
 		},
 		async injectE2ESession({ jid, session }) {
 			const cipher = new libsignal.SessionBuilder(storage, jidToSignalProtocolAddress(jid))
-			await cipher.initOutgoing(session)
+			await cipher.processPreKeyJob(session)
 		},
 		jidToSignalProtocolAddress(jid) {
 			return jidToSignalProtocolAddress(jid).toString()
@@ -79,25 +79,23 @@ export function makeLibSignalRepository(auth: SignalAuthState): SignalRepository
 
 const jidToSignalProtocolAddress = (jid: string) => {
 	const { user, device } = jidDecode(jid)!
-	return new libsignal.ProtocolAddress(user, device || 0)
+	return new libsignal.SignalProtocolAddress(user, device || 0)
 }
 
 const jidToSignalSenderKeyName = (group: string, user: string): string => {
 	return new SenderKeyName(group, jidToSignalProtocolAddress(user)).toString()
 }
 
-function signalStorage({ creds, keys }: SignalAuthState) {
+function signalStorage({ creds, keys }: SignalAuthState): SignalStorage {
 	return {
 		loadSession: async(id: string) => {
 			const { [id]: sess } = await keys.get('session', [id])
-			if(sess) {
-				return libsignal.SessionRecord.deserialize(sess)
-			}
+			return sess
 		},
 		storeSession: async(id, session) => {
-			await keys.set({ 'session': { [id]: session.serialize() } })
+			await keys.set({ 'session': { [id]: session } })
 		},
-		isTrustedIdentity: () => {
+		isTrustedIdentity: async() => {
 			return true
 		},
 		loadPreKey: async(id: number | string) => {
@@ -110,8 +108,8 @@ function signalStorage({ creds, keys }: SignalAuthState) {
 				}
 			}
 		},
-		removePreKey: (id: number) => keys.set({ 'pre-key': { [id]: null } }),
-		loadSignedPreKey: () => {
+		removePreKey: async(id: number) => keys.set({ 'pre-key': { [id]: null } }),
+		loadSignedPreKey: async() => {
 			const key = creds.signedPreKey
 			return {
 				privKey: Buffer.from(key.keyPair.private),
@@ -127,15 +125,27 @@ function signalStorage({ creds, keys }: SignalAuthState) {
 		storeSenderKey: async(keyId, key) => {
 			await keys.set({ 'sender-key': { [keyId]: key.serialize() } })
 		},
-		getOurRegistrationId: () => (
+		getLocalRegistrationId: async() => (
 			creds.registrationId
 		),
-		getOurIdentity: () => {
+		getIdentityKeyPair: async() => {
 			const { signedIdentityKey } = creds
 			return {
 				privKey: Buffer.from(signedIdentityKey.private),
 				pubKey: generateSignalPubKey(signedIdentityKey.public),
 			}
-		}
+		},
+		saveIdentity: async() => {
+			return true
+		},
+		removeSignedPreKey: async(keyId) => {
+			await keys.set({ 'signed-pre-key': { [keyId]: null } })
+		},
+		storePreKey: async(keyId, keyPair) => {
+			await keys.set({ 'pre-key': { [keyId]: { private: Buffer.from(keyPair.privKey), public: Buffer.from(keyPair.pubKey) } } })
+		},
+		storeSignedPreKey: async(keyId, keyPair) => {
+			await keys.set({ 'signed-pre-key': { [keyId]: { private: Buffer.from(keyPair.privKey), public: Buffer.from(keyPair.pubKey) } } })
+		},
 	}
 }

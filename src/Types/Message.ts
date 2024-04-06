@@ -225,6 +225,7 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
     backgroundColor?: string
     /** font type for status */
     font?: number
+    spoofMsgId?: string
 }
 export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
 	userJid: string
