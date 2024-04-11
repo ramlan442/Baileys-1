@@ -41,6 +41,7 @@ import {
 	S_WHATSAPP_NET
 } from '../WABinary'
 import { MobileSocketClient } from './Client'
+import NodeCache from 'node-cache'
 
 /**
  * Connects to WA servers and performs:
@@ -64,6 +65,10 @@ export const makeSocket = (config: SocketConfig) => {
 	} = config
 
 	const ws = new MobileSocketClient()
+
+	const cache = new NodeCache({
+		useClones: false
+	})
 
 	ws.connect()
 
@@ -694,6 +699,7 @@ export const makeSocket = (config: SocketConfig) => {
 		waitForMessage,
 		waitForSocketOpen,
 		sendRawMessage,
+		cache,
 		sendNode,
 		logout,
 		end,

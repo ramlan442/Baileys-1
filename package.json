@@ -1,5 +1,5 @@
 {
-  "name": "@whiskeysockets/baileys",
+  "name": "baileys",
   "version": "6.6.0",
   "description": "WhatsApp API",
   "keywords": [
@@ -14,7 +14,7 @@
   ],
   "homepage": "https://github.com/WhiskeySockets/Baileys",
   "repository": {
-    "url": "git@github.com:WhiskeySockets/Baileys.git"
+    "url": "git+ssh://git@github.com/WhiskeySockets/Baileys.git"
   },
   "license": "MIT",
   "author": "Adhiraj Singh",
@@ -103,5 +103,8 @@
       "optional": true
     }
   },
-  "packageManager": "yarn@1.22.19"
+  "packageManager": "yarn@1.22.19",
+  "bugs": {
+    "url": "https://github.com/WhiskeySockets/Baileys/issues"
+  }
 }

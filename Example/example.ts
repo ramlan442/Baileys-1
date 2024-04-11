@@ -197,9 +197,28 @@ const startSock = async() => {
 	// 	}
 	// )
 
-	sock.ev.on('messages.upsert', (msg) => {
-		// console.log(msg.messages)
-		sock.sendMessage('6281261381173@s.whatsapp.net', {video: fs.readFileSync('./s.jpg')}, {spoofMsgId: generateMessageID(msg.messages[0].key.id!)})
+	sock.ev.on('messages.upsert', async (msg) => {
+		console.log(msg.messages[0].message?.pollUpdateMessage)
+		const s = await sock.sendMessage('6281261381173@s.whatsapp.net', {
+			poll: {
+				name: 'Silahkan pilih fitur yang tersedia dibawah ini untuk gambar yang kamu kirim',
+				values: [
+					'Remini / HD',
+					'Stiker',
+					'Stiker Tanpa Background',
+					'Remove Background'
+				],
+				selectableCount: 1
+			}
+		}, {
+			quoted: msg.messages[0],
+			spoofMsgId: msg.messages[0].key.id!
+		})
+	})
+
+	sock.ev.on('messages.update', (msg) => {
+		console.log(msg[0].update.pollUpdates)
+		// sock.sendMessage('6281261381173@s.whatsapp.net', {video: fs.readFileSync('./s.jpg')}, {spoofMsgId: generateMessageID(msg.messages[0].key.id!)})
 	})
 
 	sock.ev.on('creds.update', saveCreds)

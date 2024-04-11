@@ -63,7 +63,7 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 			}
 		}
 
-		sock.ev.emit('groups.update', Object.values(data))
+		// sock.ev.emit('groups.update', Object.values(data))
 
 		return data
 	}
@@ -255,16 +255,16 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 				inviteMessage = proto.Message.GroupInviteMessage.fromObject(inviteMessage)
 				inviteMessage.inviteExpiration = 0
 				inviteMessage.inviteCode = ''
-				ev.emit('messages.update', [
-					{
-						key,
-						update: {
-							message: {
-								groupInviteMessage: inviteMessage
-							}
-						}
-					}
-				])
+				// ev.emit('messages.update', [
+				// 	{
+				// 		key,
+				// 		update: {
+				// 			message: {
+				// 				groupInviteMessage: inviteMessage
+				// 			}
+				// 		}
+				// 	}
+				// ])
 			}
 
 			// generate the group add message

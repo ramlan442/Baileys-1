@@ -234,21 +234,21 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	) => {
 		switch (child?.tag) {
 		case 'create':
-			const metadata = extractGroupMetadata(child)
+			// const metadata = extractGroupMetadata(child)
 
-			msg.messageStubType = WAMessageStubType.GROUP_CREATE
-			msg.messageStubParameters = [metadata.subject]
-			msg.key = { participant: metadata.owner }
+			// msg.messageStubType = WAMessageStubType.GROUP_CREATE
+			// msg.messageStubParameters = [metadata.subject]
+			// msg.key = { participant: metadata.owner }
 
-			ev.emit('chats.upsert', [{
-				id: metadata.id,
-				name: metadata.subject,
-				conversationTimestamp: metadata.creation,
-			}])
-			ev.emit('groups.upsert', [{
-				...metadata,
-				author: participant
-			}])
+			// ev.emit('chats.upsert', [{
+			// 	id: metadata.id,
+			// 	name: metadata.subject,
+			// 	conversationTimestamp: metadata.creation,
+			// }])
+			// ev.emit('groups.upsert', [{
+			// 	...metadata,
+			// 	author: participant
+			// }])
 			break
 		case 'ephemeral':
 		case 'not_ephemeral':

@@ -2,9 +2,9 @@ import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto'
 import { PROCESSABLE_HISTORY_TYPES } from '../Defaults'
 import { ALL_WA_PATCH_NAMES, ChatModification, ChatMutation, LTHashState, MessageUpsertType, PresenceData, SocketConfig, WABusinessHoursConfig, WABusinessProfile, WAMediaUpload, WAMessage, WAPatchCreate, WAPatchName, WAPresence, WAPrivacyOnlineValue, WAPrivacyValue, WAReadReceiptsValue } from '../Types'
-import { chatModificationToAppPatch, ChatMutationMap, decodePatches, decodeSyncdSnapshot, encodeSyncdPatch, extractSyncdPatches, generateProfilePicture, getHistoryMsg, newLTHashState, processSyncAction } from '../Utils'
+import { chatModificationToAppPatch, ChatMutationMap, decodePatches, decodeSyncdSnapshot, encodeSyncdPatch, extractSyncdPatches, generateProfilePicture, getHistoryMsg, getKeyAuthor, newLTHashState, normalizeMessageContent, processSyncAction } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
-import processMessage from '../Utils/process-message'
+import processMessage, { decryptPollVote } from '../Utils/process-message'
 import { BinaryNode, getBinaryNodeChild, getBinaryNodeChildren, jidNormalizedUser, reduceBinaryNodeToDictionary, S_WHATSAPP_NET } from '../WABinary'
 import { makeSocket } from './socket'
 
@@ -28,6 +28,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		sendNode,
 		query,
 		onUnexpectedError,
+		cache
 	} = sock
 
 	let privacySettings: { [_: string]: string } | undefined
@@ -626,7 +627,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 
 		if(presence) {
-			ev.emit('presence.update', { id: jid, presences: { [participant]: presence } })
+			// ev.emit('presence.update', { id: jid, presences: { [participant]: presence } })
 		}
 	}
 
@@ -848,7 +849,46 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		])
 	}
 
-	const upsertMessage = async(msg: WAMessage, type: MessageUpsertType) => ev.emit('messages.upsert', { messages: [msg], type })
+	const upsertMessage = async(msg: WAMessage, type: MessageUpsertType) => {
+		const meId = authState.creds.me!.id
+		const content = normalizeMessageContent(msg.message)
+		if(content?.pollUpdateMessage){
+			const creationMsgKey = content.pollUpdateMessage.pollCreationMessageKey!
+			// we need to fetch the poll creation message to get the poll enc key
+			const {messageSecret, option} = cache.get<any>(creationMsgKey.id!) || {}
+			if(messageSecret) {
+				const meIdNormalised = jidNormalizedUser(meId)
+				const pollCreatorJid = getKeyAuthor(creationMsgKey, meIdNormalised)
+				const voterJid = getKeyAuthor(msg.key!, meIdNormalised)
+				const pollEncKey = messageSecret
+
+				try {
+					const voteMsg = decryptPollVote(
+						content.pollUpdateMessage.vote!,
+						{
+							pollEncKey,
+							pollCreatorJid,
+							pollMsgId: creationMsgKey.id!,
+							voterJid,
+						}
+					)
+					const hash = voteMsg.toJSON().selectedOptions[0];
+					msg.message!.pollUpdateMessage!.vote = option[hash] as any
+				} catch(err) {
+					logger?.warn(
+						{ err, creationMsgKey },
+						'failed to decrypt poll vote'
+					)
+				}
+			} else {
+				logger?.warn(
+					{ creationMsgKey },
+					'poll creation message not found, cannot decrypt update'
+				)
+			}
+		}
+		ev.emit('messages.upsert', { messages: [msg], type })
+	}
 
 	ws.on('CB:presence', handlePresenceUpdate)
 	ws.on('CB:chatstate', handlePresenceUpdate)

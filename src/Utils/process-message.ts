@@ -209,12 +209,12 @@ const processMessage = async(
 					]
 				})
 
-				const data = await downloadAndProcessHistorySyncNotification(
-					histNotification,
-					options
-				)
+				// const data = await downloadAndProcessHistorySyncNotification(
+				// 	histNotification,
+				// 	options
+				// )
 
-				ev.emit('messaging-history.set', { ...data, isLatest })
+				// ev.emit('messaging-history.set', { ...data, isLatest })
 			}
 
 			break
@@ -395,10 +395,20 @@ const processMessage = async(
 					}
 				])
 			} catch(err) {
-				logger?.warn(
-					{ err, creationMsgKey },
-					'failed to decrypt poll vote'
-				)
+				ev.emit('messages.update', [
+					{
+						key: creationMsgKey,
+						update: {
+							pollUpdates: [
+								{
+									pollUpdateMessageKey: message.key,
+									vote: null,
+									senderTimestampMs: (content.pollUpdateMessage.senderTimestampMs! as Long).toNumber(),
+								}
+							]
+						}
+					}
+				])
 			}
 		} else {
 			logger?.warn(
